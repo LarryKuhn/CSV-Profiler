@@ -78,11 +78,13 @@ User Data |  |  |  |  | (A\d{5}\|B\d{5}) | Admin | nothing | nothing
 
 ## Documentation
 
-Complete user documentation is available here.
+Complete user documentation is available [here](https://github.com/LarryKuhn/CSV-Profiler/tree/master/Documentation).
 
 ## Installation
 
-Software can be downloaded from here.  Hopefully it will be available for downloading from PyPI in the near future.
+Software can be downloaded from [here](https://github.com/LarryKuhn/CSV-Profiler/tree/master/CSV-Profiler).
+
+Hopefully it will be available for downloading from PyPI in the near future.
 
 ## Licensing
 
