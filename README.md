@@ -82,7 +82,7 @@ Complete user documentation is available [here](https://github.com/LarryKuhn/CSV
 
 ## Installation
 
-Software is available above and can be downloaded into your local Python scripts directory or installed using pip from PyPI.org (pip install csvprofiler).
+Software is available above and can be downloaded into your local Python scripts directory or installed using pip from PyPI.org (sudo pip3 install csvprofiler or sudo pip3 install --user csvprofiler).  If you are installing on linux, you may need to chmod the scripts to allow execution.
 
 ## Licensing
 
