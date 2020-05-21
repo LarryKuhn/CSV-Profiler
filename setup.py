@@ -6,7 +6,7 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setuptools.setup(
-    name="csvprofiler-larrykuhn", # Replace with your own username
+    name="csvprofiler",
     version="1.1.2",
     author="Larry Kuhn",
     author_email="LarryKuhn@outlook.com",
@@ -15,7 +15,7 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     url="https://github.com/LarryKuhn/CSV-Profiler",
     packages=setuptools.find_packages(),
-    scripts=["csvpcg.py", "csvprofiler.py", "wrapdemo.py"]
+    scripts=["csvpcg.py", "csvprofiler.py", "wrapdemo.py", "profmod.py"],
     classifiers=[
         "Development Status :: 5 - Production/Stable",
         "Intended Audience :: Developers",

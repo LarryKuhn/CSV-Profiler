@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+
 """
 Profiler Module (profmod) is a field testing engine allowing
 driver scripts to process different file types and run True/False
@@ -1016,7 +1017,7 @@ def add_lookup_test(name: str, lulist: list):
             # provider function defined in config file
             # parse config line and add provider
             impstr = config[name].split(' ')
-            impmod = importlib.import_module(impstr[1], 'csvprofiler')
+            impmod = importlib.import_module(impstr[1], '.')
             impfunc = getattr(impmod, impstr[2])
             impinit = getattr(impmod, 'init', None)
             add_provider(name, impfunc)
