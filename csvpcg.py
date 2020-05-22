@@ -20,7 +20,7 @@ output files:
     small test file (.csv)
 """
 
-__version__ = '1.1.2'
+__version__ = '1.1.2-2'
 
 ########################################################################
 # Copyright (c) 2020 Larry Kuhn <larrykuhn@outlook.com>
@@ -47,6 +47,8 @@ __version__ = '1.1.2'
 #   - Minor refactoring
 # v1.1.2 05/19/2020 L.Kuhn
 #   - General release commenting
+# v1.1.2-2 05/22/2020 L.Kuhn
+#   - Fixed newline issue for OS conflicts
 ##################################################################
 from datetime import datetime
 import os
@@ -83,7 +85,7 @@ def csv_input(file):
 
     if not os.path.exists(file):
         raise FileNotFoundError(f'{file} not found')
-    with open(file, mode='r', newline='') as cf:
+    with open(file, mode='r', newline=None) as cf:
         # grab csv dialect info, override if necessary
         g['has_header'] = has_header = csv.Sniffer().has_header(cf.read(10240))
         cf.seek(0)
@@ -159,7 +161,7 @@ def csv_input(file):
     (fileroot, ext) = os.path.splitext(filename)
     small = fileroot + '_csvp_test.csv'
     csvtestfile = os.path.join(filepath, small)
-    with open(csvtestfile, mode='w', newline='') as ctf:
+    with open(csvtestfile, mode='w', newline=None) as ctf:
         csvWriter = csv.writer(ctf, dialect=dialect)
         csvWriter.writerow(fieldlist)
         csvWriter.writerows(rarr)
@@ -262,7 +264,7 @@ def output_config():
     errorfile = fileroot + '_csvp_errors.csv'
     logfile = fileroot + '_csvp_errors.log'
     csvpconfig = os.path.join(filepath, configfile)
-    with open(csvpconfig, mode='w') as cc:
+    with open(csvpconfig, mode='w', newline=None) as cc:
         print('[Paths]', file=cc)
         print(f'file_path      = {filepath}', file=cc)
         print(f'csv_file       = %(file_path)s/{small}', file=cc)
@@ -340,7 +342,7 @@ def output_params():
     global g
 
     csvparams = os.path.join(g['filepath'], g['params'])
-    with open(csvparams, mode='w', newline='') as cpf:
+    with open(csvparams, mode='w', newline=None) as cpf:
         writer = csv.writer(cpf, delimiter=',')
         # add hints column as col1 and build params file rows
         g['fieldlist'].insert(0, 'csvp_options')

@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-
 """
 Profiler Module (profmod) is a field testing engine allowing
 driver scripts to process different file types and run True/False
@@ -56,7 +55,7 @@ input files:
     xcheck files (optional - .txt or .csv)
 """
 
-__version__ = '1.1.2'
+__version__ = '1.1.2-2'
 
 ########################################################################
 # Copyright (c) 2020 Larry Kuhn <larrykuhn@outlook.com>
@@ -87,6 +86,8 @@ __version__ = '1.1.2'
 # v1.1.2 05/19/2020 L.Kuhn
 #   - Enable provider capability via config
 #   - General release commenting
+# v1.1.2-2 05/22/2020 L.Kuhn
+#   - Fixed newline issue for OS conflicts
 ########################################################################
 
 from datetime import date, datetime
@@ -946,7 +947,7 @@ def get_ext_table(name: str, index=None) -> list:
         if not os.path.exists(extfile):
             raise FileNotFoundError(f'external file {extfile} not found')
         try:
-            with open(extfile, mode='r', newline='') as extf:
+            with open(extfile, mode='r', newline=None) as extf:
                 extlist = []
                 for line in iter(extf.readline, ''):
                     line = line.rstrip()
@@ -965,7 +966,7 @@ def get_ext_table(name: str, index=None) -> list:
             raise FileNotFoundError(f'external file {extfile} not found')
         csv.register_dialect('xcheck', delimiter=',', escapechar=None,
                              quotechar='"', doublequote=True, quoting=0)
-        with open(extfile, newline='') as csvfile:
+        with open(extfile, newline=None) as csvfile:
             csvf = csv.DictReader(csvfile, dialect='xcheck')
             colcount = len(csvf.fieldnames)
             try:
@@ -1207,7 +1208,6 @@ named_tests = {
     'numeric'       :   regex_type_func(r'(?a)\d+'),
     'Username'      :   regex_type_func(r'(?a)[a-zA-Z][-a-zA-Z0-9_]{1,15}'),
     'Address'       :   regex_type_func(r'(?a)[-a-zA-Z0-9 \.\,\(\)\/]+'),
-    'Sentence'      :   regex_type_func(r'(?a)[\x20-\x2a\x2c-\x3b\x3f-\x5a\x61-\x7a]+'),
     'dollar'        :   regex_type_func(r'(?a)[-+(]?\$(?:(?:\.\d{2})|((?:\d+)|(?:(?:(?:\d{1,3}[,](?:\d{3}[,])*\d{3})|(?:\d{1,3}))))(?:\.\d{2})?)[)]?'),
     '@Twitter'      :   regex_type_func(r'(?a)@\w{1,15}'),
     '@Twitter+'     :   regex_type_func(r'(?a)@\w{1,15}(?:(?: |,[ ]?)@\w{1,15})*'),
@@ -1245,6 +1245,7 @@ named_tests = {
                                                                         # bankcard, laser, solo, switch, hsbc, discover, rupay
                         |(?:(?:5[12345]|2[2-7])\d{2}(?:[- ]?\d{4}){3})  # mastercard, diners, bmo
                         )'''),
+    'Sentence'      :   regex_type_func(r'(?a)[\x20-\x2a\x2c-\x3b\x3f-\x5a\x61-\x7a]+'),
     'b.isdigit'     :   bytes.isdigit,
     'isdigit'       :   str.isdigit,
     'isdecimal'     :   str.isdecimal,

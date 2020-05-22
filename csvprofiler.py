@@ -27,7 +27,7 @@ output files:
     error log file (optional - .log)
 """
 
-__version__ = '1.1.3'
+__version__ = '1.1.2-2'
 
 ########################################################################
 # Copyright (c) 2020 Larry Kuhn <larrykuhn@outlook.com>
@@ -57,8 +57,11 @@ __version__ = '1.1.3'
 #   - Minor refactoring
 # v1.1.2 05/19/2020 L.Kuhn
 #   - General release commenting
-# v1.1.3 05/21/2020 L.Kuhn
+# v1.1.2-1 05/21/2020 L.Kuhn
 #   - Fixed param col0 check bug
+# v1.1.2-2 05/22/2020 L.Kuhn
+#   - Sort numset values for CSV file output
+#   - Fixed newline issue for OS conflicts
 ########################################################################
 from configparser import ConfigParser
 from collections import Counter
@@ -139,7 +142,7 @@ class ErrorMgr():
             self._hashdr = g['cfg']['has_header']
             if self._hashdr == 'True':
                 self._hashdr = True
-            self._cf = open(self._errcsv, mode='w', newline='')
+            self._cf = open(self._errcsv, mode='w', newline=None)
             self._cw = csv.writer(self._cf, dialect='csvp')
             if self._hashdr:
                 self._headrow = g['hdrs'].copy()
@@ -152,7 +155,7 @@ class ErrorMgr():
             (tpath, _t) = path.split(path.realpath(self._errlog))
             if not path.exists(tpath):
                 os.makedirs(tpath)
-            self._lw = open(self._errlog, mode='w')
+            self._lw = open(self._errlog, mode='w', newline=None)
             self._keycol = int(g['cfg']['key_colnum'])
             # turn keycol into function -> recsread or field value
             if self._keycol == 0:
@@ -241,7 +244,7 @@ class ReportMgr():
         # create directory if it doesn't exist
         if not path.exists(tpath):
             os.makedirs(tpath)
-        self._report = open(report_file, mode='w')
+        self._report = open(report_file, mode='w', newline=None)
 
     def write(self, *args):
         """ write joined args - allows easy handling of long lines """
@@ -474,7 +477,7 @@ def param_reader():
                                 + f'{param_file}')
     if file_size > 10000000:
         raise ValueError(f'this is not a valid param file: {param_file}')
-    with open(param_file, newline='') as paramsf:
+    with open(param_file, newline=None) as paramsf:
         params = csv.reader(paramsf, delimiter=',')
         grid = []
         for row in params:
@@ -565,7 +568,7 @@ def run_tests():
     # open
     csv_file = g['cfg']['csv_file']
     rowlen = len(g['hdrs'])
-    with open(csv_file, newline='') as csvfile:
+    with open(csv_file, newline=None) as csvfile:
         csvf = csv.reader(csvfile, dialect='csvp')
 
         # skip header
@@ -611,10 +614,10 @@ def run_tests():
             flags = pm.get_all_flags()
 
             # get unique set of error field #'s
-            numset = (set(flags[0])
-                      | set(flags[1])
-                      | set(flags[2])
-                      | set(flags[3]))
+            numset = sorted((set(flags[0])
+                            | set(flags[1])
+                            | set(flags[2])
+                            | set(flags[3])))
 
             # any errors?
             if len(numset) > 0:
