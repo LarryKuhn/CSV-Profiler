@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 
 """
 csvprofiler.py - CSV Profiler and Column Validation Tool

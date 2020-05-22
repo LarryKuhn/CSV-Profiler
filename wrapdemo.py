@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 
 """
 wrapdemo module is used to show how easy it is to add external functions
