@@ -27,7 +27,7 @@ output files:
     error log file (optional - .log)
 """
 
-__version__ = '1.1.2'
+__version__ = '1.1.3'
 
 ########################################################################
 # Copyright (c) 2020 Larry Kuhn <larrykuhn@outlook.com>
@@ -57,6 +57,8 @@ __version__ = '1.1.2'
 #   - Minor refactoring
 # v1.1.2 05/19/2020 L.Kuhn
 #   - General release commenting
+# v1.1.3 05/21/2020 L.Kuhn
+#   - Fixed param col0 check bug
 ########################################################################
 from configparser import ConfigParser
 from collections import Counter
@@ -494,7 +496,7 @@ def param_reader():
     del fc
     # transpose params - rows to columns
     tgrid = list(zip(*grid))
-    col0 = ('csvp_options',
+    col0 = ['csvp_options',
             'Column Test',
             'Column Length',
             'Max Length',
@@ -504,8 +506,11 @@ def param_reader():
             'Error Output Limit',
             'Error Output Limit - Length Errors',
             'Error Output Limit - Blank Errors',
-            'User Data')
-    if tgrid[0] != col0:
+            'User Data']
+    incol0 = []
+    for i in range(len(col0)):
+        incol0.append(tgrid[0][i])
+    if incol0 != col0:
         raise ValueError('params rows do not match expected format, expected '
                          + f'these row tags, in order:\n{col0}')
     del tgrid[0]
