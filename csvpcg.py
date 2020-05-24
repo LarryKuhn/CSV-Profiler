@@ -4,7 +4,7 @@
 CSV Profiler Configuration Generator Script.
 
 command line:
-    csvpcg.py input.csv
+    csvpcg.py input.csv [encoding]
 
 process (main):
     Read a small portion of input csv.
@@ -20,7 +20,7 @@ output files:
     small test file (.csv)
 """
 
-__version__ = '1.1.2-2'
+__version__ = '1.1.2-3'
 
 ########################################################################
 # Copyright (c) 2020 Larry Kuhn <larrykuhn@outlook.com>
@@ -49,6 +49,9 @@ __version__ = '1.1.2-2'
 #   - General release commenting
 # v1.1.2-2 05/22/2020 L.Kuhn
 #   - Fixed newline issue for OS conflicts
+# v1.1.2-3 05/24/2020 L.Kuhn
+#   - New approach to newline issue after further testing
+#   - Add encoding problem handling; new command line option
 ##################################################################
 from datetime import datetime
 import os
@@ -68,7 +71,7 @@ g['quoting_lookup'][2] = 'QUOTE_NONNUMERIC'
 g['quoting_lookup'][3] = 'QUOTE_NONE'
 
 
-def csv_input(file):
+def csv_input(file, encoding):
     """
     determine csv dialect information and buffer some rows
 
@@ -85,9 +88,15 @@ def csv_input(file):
 
     if not os.path.exists(file):
         raise FileNotFoundError(f'{file} not found')
-    with open(file, mode='r', newline=None) as cf:
+    with open(file, mode='r', newline=None, encoding=encoding) as cf:
         # grab csv dialect info, override if necessary
-        g['has_header'] = has_header = csv.Sniffer().has_header(cf.read(10240))
+        try:
+            g['has_header'] = has_header = csv.Sniffer().has_header(cf.read(10240))
+        except UnicodeDecodeError:
+            print('Encountered encoding error. Try a different codec')
+            print('On Windows, try "csvpcg.py input.csv utf-8"')
+            print('otherwise, try "csvpcg.py input.csv cp1252"')
+            sys.exit(2)
         cf.seek(0)
         dialect = csv.Sniffer().sniff(cf.read(10240))
         cf.seek(0)
@@ -137,6 +146,15 @@ def csv_input(file):
         recsread = 0
         rarr = []
         g['rarr'] = rarr
+        # echo sample rows to output as small test file
+        (filepath, filename) = os.path.split(os.path.realpath(file))
+        (fileroot, ext) = os.path.splitext(filename)
+        small = fileroot + '_csvp_test.csv'
+        csvtestfile = os.path.join(filepath, small)
+        ctf = open(csvtestfile, mode='w', newline='', encoding=encoding)
+        csvWriter = csv.writer(ctf, dialect=dialect)
+        fieldlist[-1] = fieldlist[-1].rstrip('\r\n')
+        csvWriter.writerow(fieldlist)
         for row in reader:
             recnum += 1
             if recsread >= readnumrecs:
@@ -153,18 +171,10 @@ def csv_input(file):
                       f'({recnum}), skipped:\n{row}')
                 continue
             recsread += 1
+            t[-1] = t[-1].rstrip('\r\n')
+            csvWriter.writerow(t)
             rarr.append(t)
         g['recsread'] = recsread
-
-    # echo sample rows to output as small test file
-    (filepath, filename) = os.path.split(os.path.realpath(file))
-    (fileroot, ext) = os.path.splitext(filename)
-    small = fileroot + '_csvp_test.csv'
-    csvtestfile = os.path.join(filepath, small)
-    with open(csvtestfile, mode='w', newline=None) as ctf:
-        csvWriter = csv.writer(ctf, dialect=dialect)
-        csvWriter.writerow(fieldlist)
-        csvWriter.writerows(rarr)
     g['filepath'] = filepath
     g['filename'] = filename
     g['fileroot'] = fileroot
@@ -326,7 +336,7 @@ def output_config():
         print('', file=cc)
 
 
-def output_params():
+def output_params(encoding):
     """
     generate custom params file based on input csv analysis
 
@@ -342,7 +352,7 @@ def output_params():
     global g
 
     csvparams = os.path.join(g['filepath'], g['params'])
-    with open(csvparams, mode='w', newline=None) as cpf:
+    with open(csvparams, mode='w', newline='', encoding=encoding) as cpf:
         writer = csv.writer(cpf, delimiter=',')
         # add hints column as col1 and build params file rows
         g['fieldlist'].insert(0, 'csvp_options')
@@ -367,17 +377,20 @@ def output_params():
 def main():
     """ ensure csv file input specified, run all functions in order """
     print(f'\ncsvpcg.py (v{__version__}) started', str(pm.get_time()))
-    if len(sys.argv) != 2:
+    if len(sys.argv) < 2:
         print('Please provide input CSV file on command line: '
-              'csvpcg.py input.csv')
+              'csvpcg.py input.csv [encoding]')
         sys.exit(2)
     csvfile = sys.argv[1]
+    encoding = None
+    if len(sys.argv) == 3:
+        encoding = sys.argv[2]
     # run in digestable pieces for the heck of it
     # use global dict rather than a bunch of globals
-    csv_input(file=csvfile)
+    csv_input(file=csvfile, encoding=encoding)
     csv_analysis()
     output_config()
-    output_params()
+    output_params(encoding=encoding)
     print('csvpcg.py ended ', str(pm.get_time()))
 
 

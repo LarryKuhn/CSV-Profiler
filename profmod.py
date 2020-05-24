@@ -41,6 +41,7 @@ Functions (* currently used externally by package scripts):
     get_named_tests - for verbose / debugging
 
 Variables currently used externally by package scripts:
+    encoding - file encoding (None for platform default)
     named_tests (dict) - stores all tests except providers
     verbose (bool) - debugging
     ftclass_dict (dict) - contains FieldTest objects
@@ -55,7 +56,7 @@ input files:
     xcheck files (optional - .txt or .csv)
 """
 
-__version__ = '1.1.2-2'
+__version__ = '1.1.2-3'
 
 ########################################################################
 # Copyright (c) 2020 Larry Kuhn <larrykuhn@outlook.com>
@@ -86,8 +87,12 @@ __version__ = '1.1.2-2'
 # v1.1.2 05/19/2020 L.Kuhn
 #   - Enable provider capability via config
 #   - General release commenting
+# v1.1.2-1 no changes
 # v1.1.2-2 05/22/2020 L.Kuhn
 #   - Fixed newline issue for OS conflicts
+# v1.1.2-3 05/24/2020 L.Kuhn
+#   - New approach to newline issue after further testing
+#   - Add encoding problem handling; new command line option
 ########################################################################
 
 from datetime import date, datetime
@@ -100,6 +105,7 @@ import importlib
 
 # globals
 verbose = False
+encoding = None
 
 # global statistics pool
 # 0        : Counter() - for total stats
@@ -947,7 +953,8 @@ def get_ext_table(name: str, index=None) -> list:
         if not os.path.exists(extfile):
             raise FileNotFoundError(f'external file {extfile} not found')
         try:
-            with open(extfile, mode='r', newline=None) as extf:
+            with open(extfile, mode='r', newline=None,
+                      encoding=encoding) as extf:
                 extlist = []
                 for line in iter(extf.readline, ''):
                     line = line.rstrip()
@@ -966,7 +973,7 @@ def get_ext_table(name: str, index=None) -> list:
             raise FileNotFoundError(f'external file {extfile} not found')
         csv.register_dialect('xcheck', delimiter=',', escapechar=None,
                              quotechar='"', doublequote=True, quoting=0)
-        with open(extfile, newline=None) as csvfile:
+        with open(extfile, newline=None, encoding=encoding) as csvfile:
             csvf = csv.DictReader(csvfile, dialect='xcheck')
             colcount = len(csvf.fieldnames)
             try:

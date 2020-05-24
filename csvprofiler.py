@@ -27,7 +27,7 @@ output files:
     error log file (optional - .log)
 """
 
-__version__ = '1.1.2-2'
+__version__ = '1.1.2-3'
 
 ########################################################################
 # Copyright (c) 2020 Larry Kuhn <larrykuhn@outlook.com>
@@ -62,6 +62,9 @@ __version__ = '1.1.2-2'
 # v1.1.2-2 05/22/2020 L.Kuhn
 #   - Sort numset values for CSV file output
 #   - Fixed newline issue for OS conflicts
+# v1.1.2-3 05/24/2020 L.Kuhn
+#   - New approach to newline issue after further testing
+#   - Add encoding problem handling; new command line option
 ########################################################################
 from configparser import ConfigParser
 from collections import Counter
@@ -105,13 +108,16 @@ class ErrorMgr():
     get_recsread
     """
 
-    def __init__(self):
+    def __init__(self, encoding=None):
         """
         control opening of error csv and log
 
         Keep track of record level error limits
         Open and close error csv and error log files as needed
         Write csv headers if csv opened
+
+        parameters/arguments:
+            encoding: file encoding (None for platform default)
         """
         if g['cfg']['error_limit'] == '':
             self.errlim = 999999999999
@@ -142,7 +148,8 @@ class ErrorMgr():
             self._hashdr = g['cfg']['has_header']
             if self._hashdr == 'True':
                 self._hashdr = True
-            self._cf = open(self._errcsv, mode='w', newline=None)
+            self._cf = open(self._errcsv, mode='w', newline=None,
+                            encoding=encoding, errors='replace')
             self._cw = csv.writer(self._cf, dialect='csvp')
             if self._hashdr:
                 self._headrow = g['hdrs'].copy()
@@ -155,7 +162,8 @@ class ErrorMgr():
             (tpath, _t) = path.split(path.realpath(self._errlog))
             if not path.exists(tpath):
                 os.makedirs(tpath)
-            self._lw = open(self._errlog, mode='w', newline=None)
+            self._lw = open(self._errlog, mode='w', newline=None,
+                            encoding=encoding, errors='replace')
             self._keycol = int(g['cfg']['key_colnum'])
             # turn keycol into function -> recsread or field value
             if self._keycol == 0:
@@ -237,14 +245,15 @@ class ReportMgr():
     close
     """
 
-    def __init__(self):
+    def __init__(self, encoding=None):
         """ control opening of report file """
         report_file = g['cfg']['report_file']
         (tpath, _t) = path.split(path.realpath(report_file))
         # create directory if it doesn't exist
         if not path.exists(tpath):
             os.makedirs(tpath)
-        self._report = open(report_file, mode='w', newline=None)
+        self._report = open(report_file, mode='w', newline=None,
+                            encoding=encoding, errors='replace')
 
     def write(self, *args):
         """ write joined args - allows easy handling of long lines """
@@ -461,13 +470,16 @@ def config_reader(file=None):
         pm.verbose = True
 
 
-def param_reader():
+def param_reader(encoding):
     """
     read parameter file into memory and validate
 
     put column headers in g['hdrs']
     transpose param columns into rows for easier processing
     save into tgrid (temporary grid/array) and return
+
+    parameters/arguments:
+        encoding: file encoding (None for platform default)
     """
     param_file = g['cfg']['param_file']
     try:
@@ -477,7 +489,7 @@ def param_reader():
                                 + f'{param_file}')
     if file_size > 10000000:
         raise ValueError(f'this is not a valid param file: {param_file}')
-    with open(param_file, newline=None) as paramsf:
+    with open(param_file, newline=None, encoding=encoding) as paramsf:
         params = csv.reader(paramsf, delimiter=',')
         grid = []
         for row in params:
@@ -550,7 +562,7 @@ def torf(field: str) -> bool:
     return field
 
 
-def run_tests():
+def run_tests(encoding):
     """
     main input csv processing and column test loop
 
@@ -558,6 +570,9 @@ def run_tests():
     report on bad records (invalid # of columns)
     execute column test for each column value
     get error flags; print errors if limits allow
+
+    parameters/arguments:
+        encoding: file encoding (None for platform default)
     """
     # all possible (and impossible) column error combinations
     bit_list = ['', 'col', 'blk', 'col blk', 'len', 'col len',
@@ -568,7 +583,8 @@ def run_tests():
     # open
     csv_file = g['cfg']['csv_file']
     rowlen = len(g['hdrs'])
-    with open(csv_file, newline=None) as csvfile:
+    with open(csv_file, newline=None,
+              encoding=encoding, errors='replace') as csvfile:
         csvf = csv.reader(csvfile, dialect='csvp')
 
         # skip header
@@ -692,7 +708,7 @@ def generate_report():
     rm.write(f"Total Log Records Written = {g['logwritten']:,}")
 
 
-def main(config=None):
+def main(config=None, encoding=None):
     """
     Main processing loop; use config argument if called by wrapper
 
@@ -722,15 +738,18 @@ def main(config=None):
     # process config
     # None means no caller/wrapper, get argv
     if config is None:
-        if len(sys.argv) != 2:
+        if len(sys.argv) < 2:
             print('Please provide input config file on command line: '
-                  'csvprofiler.py input.cfg')
+                  'csvprofiler.py input.cfg [encoding]')
             sys.exit(2)
         config = sys.argv[1]
+        if len(sys.argv) == 3:
+            encoding = sys.argv[2]
+            pm.encoding = encoding
     config_reader(file=config)
 
     # start report manager for writing to report file
-    rm = ReportMgr()
+    rm = ReportMgr(encoding=encoding)
     rm.write(started)
     rm.write('')
     config_file = os.path.realpath(config)
@@ -764,7 +783,7 @@ def main(config=None):
 
     # run param reader and get the temporary grid of
     # parameter rows for building field tests
-    tgrid = param_reader()
+    tgrid = param_reader(encoding=encoding)
 
     # if verbose, show post configuration dump
     if verbose:
@@ -781,8 +800,8 @@ def main(config=None):
     # instantiate error manager
     # and run the tests on the csv file
     rm.write('Processing CSV file')
-    em = ErrorMgr()
-    run_tests()
+    em = ErrorMgr(encoding=encoding)
+    run_tests(encoding=encoding)
 
     # flush errors
     if em.errlim > 0:
