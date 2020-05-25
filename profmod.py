@@ -41,7 +41,7 @@ Functions (* currently used externally by package scripts):
     get_named_tests - for verbose / debugging
 
 Variables currently used externally by package scripts:
-    encoding - file encoding (None for platform default)
+    encoding - controls IO and bytes conversions
     named_tests (dict) - stores all tests except providers
     verbose (bool) - debugging
     ftclass_dict (dict) - contains FieldTest objects
@@ -56,7 +56,7 @@ input files:
     xcheck files (optional - .txt or .csv)
 """
 
-__version__ = '1.1.2-3'
+__version__ = '1.1.3'
 
 ########################################################################
 # Copyright (c) 2020 Larry Kuhn <larrykuhn@outlook.com>
@@ -93,6 +93,8 @@ __version__ = '1.1.2-3'
 # v1.1.2-3 05/24/2020 L.Kuhn
 #   - New approach to newline issue after further testing
 #   - Add encoding problem handling; new command line option
+# v1.1.3 05/25/2020 L.Kuhn
+#   - errors='replace' for encoding issues (except for external files)
 ########################################################################
 
 from datetime import date, datetime
@@ -105,7 +107,7 @@ import importlib
 
 # globals
 verbose = False
-encoding = None
+encoding = 'utf-8'
 
 # global statistics pool
 # 0        : Counter() - for total stats
@@ -274,7 +276,8 @@ class XcheckType:
             binchk = repr(r_test)
             basefield = self._temp_dict[basenum]
             if binchk.find("of 'bytes' objects") > -1:
-                basefield = bytes(basefield, encoding='utf-8')
+                basefield = bytes(basefield, encoding=encoding,
+                                  errors='replace')
             # if base test is True, try the rest of the
             # i row of tests for other fields
             if r_test(basefield):
@@ -284,7 +287,8 @@ class XcheckType:
                     binchk = repr(self._test_dict[nextnum][i])
                     nextfield = self._temp_dict[nextnum]
                     if binchk.find("of 'bytes' objects") > -1:
-                        nextfield = bytes(nextfield, encoding='utf-8')
+                        nextfield = bytes(nextfield, encoding=encoding,
+                                          errors='replace')
                     # if it returns False, the whole row fails
                     if not self._test_dict[nextnum][i](nextfield):
                         self._test_failed_dict[nextnum][i] += 1
@@ -748,7 +752,7 @@ class FieldTest:
                     stats[self._fieldnum]['Length Errors'] += 1
                     length_flag_dict[self._fieldnum] = True
             if self._testname.startswith('b.'):
-                field = bytes(field, encoding='utf-8')
+                field = bytes(field, encoding=encoding, errors='replace')
 
             # field test
             result = self._testfunc(field)

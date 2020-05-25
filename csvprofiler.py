@@ -27,7 +27,7 @@ output files:
     error log file (optional - .log)
 """
 
-__version__ = '1.1.2-3'
+__version__ = '1.1.3'
 
 ########################################################################
 # Copyright (c) 2020 Larry Kuhn <larrykuhn@outlook.com>
@@ -65,6 +65,9 @@ __version__ = '1.1.2-3'
 # v1.1.2-3 05/24/2020 L.Kuhn
 #   - New approach to newline issue after further testing
 #   - Add encoding problem handling; new command line option
+# v1.1.3 05/25/2020 L.Kuhn
+#   - remove encoding command line option, use config instead
+#   - use errors='replace' for encoding issues except for input params
 ########################################################################
 from configparser import ConfigParser
 from collections import Counter
@@ -77,6 +80,7 @@ import profmod as pm
 
 # globals
 verbose = False
+encoding = 'utf-8'
 g = {}
 g['QUOTE_MINIMAL'] = 0
 g['QUOTE_ALL'] = 1
@@ -108,16 +112,13 @@ class ErrorMgr():
     get_recsread
     """
 
-    def __init__(self, encoding=None):
+    def __init__(self):
         """
         control opening of error csv and log
 
         Keep track of record level error limits
         Open and close error csv and error log files as needed
         Write csv headers if csv opened
-
-        parameters/arguments:
-            encoding: file encoding (None for platform default)
         """
         if g['cfg']['error_limit'] == '':
             self.errlim = 999999999999
@@ -148,7 +149,7 @@ class ErrorMgr():
             self._hashdr = g['cfg']['has_header']
             if self._hashdr == 'True':
                 self._hashdr = True
-            self._cf = open(self._errcsv, mode='w', newline=None,
+            self._cf = open(self._errcsv, mode='w', newline='',
                             encoding=encoding, errors='replace')
             self._cw = csv.writer(self._cf, dialect='csvp')
             if self._hashdr:
@@ -245,7 +246,7 @@ class ReportMgr():
     close
     """
 
-    def __init__(self, encoding=None):
+    def __init__(self):
         """ control opening of report file """
         report_file = g['cfg']['report_file']
         (tpath, _t) = path.split(path.realpath(report_file))
@@ -417,7 +418,7 @@ def config_reader(file=None):
         file: config file
     """
 
-    global verbose
+    global encoding, verbose
 
     try:
         file_size = path.getsize(file)
@@ -441,7 +442,7 @@ def config_reader(file=None):
                    'has_header', 'delimiter', 'escapechar', 'quotechar',
                    'doublequote', 'quoting', 'output_error_csv',
                    'output_error_log', 'key_colnum', 'error_limit',
-                   'verbose']
+                   'verbose', 'encoding']
     # make sure they exist
     for k in config_keys:
         if k not in g['cfg']:
@@ -465,21 +466,21 @@ def config_reader(file=None):
                          quotechar=g['cfg']['quotechar'],
                          doublequote=g['cfg']['doublequote'],
                          quoting=g['cfg']['quoting'])
+    # set encoding for IO
+    encoding = g['cfg']['encoding']
+    pm.encoding = encoding
     if g['cfg']['verbose'] == 'True':
         verbose = True
         pm.verbose = True
+    
 
-
-def param_reader(encoding):
+def param_reader():
     """
     read parameter file into memory and validate
 
     put column headers in g['hdrs']
     transpose param columns into rows for easier processing
     save into tgrid (temporary grid/array) and return
-
-    parameters/arguments:
-        encoding: file encoding (None for platform default)
     """
     param_file = g['cfg']['param_file']
     try:
@@ -562,7 +563,7 @@ def torf(field: str) -> bool:
     return field
 
 
-def run_tests(encoding):
+def run_tests():
     """
     main input csv processing and column test loop
 
@@ -570,9 +571,6 @@ def run_tests(encoding):
     report on bad records (invalid # of columns)
     execute column test for each column value
     get error flags; print errors if limits allow
-
-    parameters/arguments:
-        encoding: file encoding (None for platform default)
     """
     # all possible (and impossible) column error combinations
     bit_list = ['', 'col', 'blk', 'col blk', 'len', 'col len',
@@ -708,7 +706,7 @@ def generate_report():
     rm.write(f"Total Log Records Written = {g['logwritten']:,}")
 
 
-def main(config=None, encoding=None):
+def main(config=None):
     """
     Main processing loop; use config argument if called by wrapper
 
@@ -738,18 +736,15 @@ def main(config=None, encoding=None):
     # process config
     # None means no caller/wrapper, get argv
     if config is None:
-        if len(sys.argv) < 2:
+        if len(sys.argv) != 2:
             print('Please provide input config file on command line: '
-                  'csvprofiler.py input.cfg [encoding]')
+                  'csvprofiler.py input.cfg')
             sys.exit(2)
         config = sys.argv[1]
-        if len(sys.argv) == 3:
-            encoding = sys.argv[2]
-            pm.encoding = encoding
     config_reader(file=config)
 
     # start report manager for writing to report file
-    rm = ReportMgr(encoding=encoding)
+    rm = ReportMgr()
     rm.write(started)
     rm.write('')
     config_file = os.path.realpath(config)
@@ -783,7 +778,7 @@ def main(config=None, encoding=None):
 
     # run param reader and get the temporary grid of
     # parameter rows for building field tests
-    tgrid = param_reader(encoding=encoding)
+    tgrid = param_reader()
 
     # if verbose, show post configuration dump
     if verbose:
@@ -800,8 +795,8 @@ def main(config=None, encoding=None):
     # instantiate error manager
     # and run the tests on the csv file
     rm.write('Processing CSV file')
-    em = ErrorMgr(encoding=encoding)
-    run_tests(encoding=encoding)
+    em = ErrorMgr()
+    run_tests()
 
     # flush errors
     if em.errlim > 0:

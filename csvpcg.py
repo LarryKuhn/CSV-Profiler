@@ -20,7 +20,7 @@ output files:
     small test file (.csv)
 """
 
-__version__ = '1.1.2-3'
+__version__ = '1.1.3'
 
 ########################################################################
 # Copyright (c) 2020 Larry Kuhn <larrykuhn@outlook.com>
@@ -52,7 +52,10 @@ __version__ = '1.1.2-3'
 # v1.1.2-3 05/24/2020 L.Kuhn
 #   - New approach to newline issue after further testing
 #   - Add encoding problem handling; new command line option
-##################################################################
+# v1.1.3 05/25/2020 L.Kuhn
+#   - add encoding to config as param
+#   - use errors='replace' for encoding issues if encoding specified
+########################################################################
 from datetime import datetime
 import os
 import sys
@@ -60,6 +63,11 @@ from collections import Counter
 import csv
 import profmod as pm
 
+# encoding controls IO conversion into Python
+# default to utf-8 and strict error handling
+# unless/until specified by user
+encoding = 'utf-8'
+errors = 'strict'
 
 # global inits
 readnumrecs = 997
@@ -71,7 +79,7 @@ g['quoting_lookup'][2] = 'QUOTE_NONNUMERIC'
 g['quoting_lookup'][3] = 'QUOTE_NONE'
 
 
-def csv_input(file, encoding):
+def csv_input(file):
     """
     determine csv dialect information and buffer some rows
 
@@ -84,19 +92,21 @@ def csv_input(file, encoding):
             g['fieldlist'] - csv headers
             g['...'] - dialect fields
     """
-    global readnumrecs, g
-
     if not os.path.exists(file):
         raise FileNotFoundError(f'{file} not found')
-    with open(file, mode='r', newline=None, encoding=encoding) as cf:
+    with open(file, mode='r', newline=None,
+              encoding=encoding, errors=errors) as cf:
         # grab csv dialect info, override if necessary
         try:
-            g['has_header'] = has_header = csv.Sniffer().has_header(cf.read(10240))
-        except UnicodeDecodeError:
-            print('Encountered encoding error. Try a different codec')
-            print('On Windows, try "csvpcg.py input.csv utf-8"')
-            print('otherwise, try "csvpcg.py input.csv cp1252"')
+            has_header = csv.Sniffer().has_header(cf.read(10240))
+        except UnicodeDecodeError as e:
+            print(f'Encountered encoding error: {e}')
+            print('Try another codec (e.g. cp1252 if '
+                  'error in the range x80-x9F)')
+            print('\n\tcsvpcg.py input.csv cp1252\n')
+            print('common codecs: utf-8, latin1, cp1252')
             sys.exit(2)
+        g['has_header'] = has_header
         cf.seek(0)
         dialect = csv.Sniffer().sniff(cf.read(10240))
         cf.seek(0)
@@ -151,29 +161,38 @@ def csv_input(file, encoding):
         (fileroot, ext) = os.path.splitext(filename)
         small = fileroot + '_csvp_test.csv'
         csvtestfile = os.path.join(filepath, small)
-        ctf = open(csvtestfile, mode='w', newline='', encoding=encoding)
+        ctf = open(csvtestfile, mode='w', newline='',
+                   encoding=encoding, errors=errors)
         csvWriter = csv.writer(ctf, dialect=dialect)
         fieldlist[-1] = fieldlist[-1].rstrip('\r\n')
         csvWriter.writerow(fieldlist)
-        for row in reader:
-            recnum += 1
-            if recsread >= readnumrecs:
-                break
-            if '$$overage$$' in row:
-                print('Too many columns found in input record '
-                      f'({recnum}), skipped:\n{row}')
-                continue
-            t = []
-            for f in row.values():
-                t.append(f)
-            if t[-1] == bin0:
-                print('Too few columns found in input record '
-                      f'({recnum}), skipped:\n{row}')
-                continue
-            recsread += 1
-            t[-1] = t[-1].rstrip('\r\n')
-            csvWriter.writerow(t)
-            rarr.append(t)
+        try:
+            for row in reader:
+                recnum += 1
+                if recsread >= readnumrecs:
+                    break
+                if '$$overage$$' in row:
+                    print('Too many columns found in input record '
+                          f'({recnum}), skipped:\n{row}')
+                    continue
+                t = []
+                for f in row.values():
+                    t.append(f)
+                if t[-1] == bin0:
+                    print('Too few columns found in input record '
+                          f'({recnum}), skipped:\n{row}')
+                    continue
+                recsread += 1
+                t[-1] = t[-1].rstrip('\r\n')
+                csvWriter.writerow(t)
+                rarr.append(t)
+        except UnicodeDecodeError as e:
+            print(f'Encountered encoding error: {e}')
+            print('Try another codec (e.g. cp1252 if '
+                  'error in the range x80-x9F)')
+            print('\n\tcsvpcg.py input.csv cp1252\n')
+            print('common codecs: utf-8, latin1, cp1252')
+            sys.exit(2)
         g['recsread'] = recsread
     g['filepath'] = filepath
     g['filename'] = filename
@@ -192,9 +211,6 @@ def csv_analysis():
             g['rectestlist'] - recommended column tests
             g['fldlenavg'] - avg field length for length test
     """
-
-    global g
-
     # get list of test names and funcs from profmod
     testnamelist = []
     testfunclist = []
@@ -219,7 +235,7 @@ def csv_analysis():
             fldlenavg[f] += len(field)
             for t, test in enumerate(testfunclist, start=0):
                 if "'bytes' object" in str(test):
-                    bfield = bytes(field, encoding='utf-8')
+                    bfield = bytes(field, encoding=encoding)
                     if test(bfield) is True:
                         carr[t][f] += 1
                 elif test(field) is True:
@@ -260,9 +276,6 @@ def output_config():
     output:
             config file
     """
-
-    global g
-
     # build file names from input csv file pieces
     timestring = datetime.strftime(datetime.now(), '%Y%m%d%H%M%S')
     fileroot = g['fileroot']
@@ -318,6 +331,11 @@ def output_config():
               'delimiter or quotechar; default and most likely', file=cc)
         print(f'quoting = {g["quoting"]}', file=cc)
         print('', file=cc)
+        print('# encoding controls IO conversion into Python; invalid '
+              'characters will be turned into replacement character '
+              '(? in diamond)', file=cc)
+        print(f'encoding = {encoding}', file=cc)
+        print('', file=cc)
         print('[Output Settings]', file=cc)
         print('output_error_csv = True', file=cc)
         print('output_error_log = True', file=cc)
@@ -336,7 +354,7 @@ def output_config():
         print('', file=cc)
 
 
-def output_params(encoding):
+def output_params():
     """
     generate custom params file based on input csv analysis
 
@@ -348,11 +366,9 @@ def output_params(encoding):
     output:
             csv param file
     """
-
-    global g
-
     csvparams = os.path.join(g['filepath'], g['params'])
-    with open(csvparams, mode='w', newline='', encoding=encoding) as cpf:
+    with open(csvparams, mode='w', newline='',
+              encoding=encoding, errors=errors) as cpf:
         writer = csv.writer(cpf, delimiter=',')
         # add hints column as col1 and build params file rows
         g['fieldlist'].insert(0, 'csvp_options')
@@ -375,6 +391,9 @@ def output_params(encoding):
 
 
 def main():
+
+    global encoding, errors
+
     """ ensure csv file input specified, run all functions in order """
     print(f'\ncsvpcg.py (v{__version__}) started', str(pm.get_time()))
     if len(sys.argv) < 2:
@@ -382,15 +401,16 @@ def main():
               'csvpcg.py input.csv [encoding]')
         sys.exit(2)
     csvfile = sys.argv[1]
-    encoding = None
+    # if encoding is specified, set it and gracefully handle errors
     if len(sys.argv) == 3:
         encoding = sys.argv[2]
+        errors = 'replace'
     # run in digestable pieces for the heck of it
     # use global dict rather than a bunch of globals
-    csv_input(file=csvfile, encoding=encoding)
+    csv_input(file=csvfile)
     csv_analysis()
     output_config()
-    output_params(encoding=encoding)
+    output_params()
     print('csvpcg.py ended ', str(pm.get_time()))
 
 
