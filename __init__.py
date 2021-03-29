@@ -9,8 +9,8 @@ scripts:
     csvprofiler - CSV Profiler and Column Validation Tool
         csvprofiler.py input.cfg
 
+    profmod - Profiler Module - a field testing engine
+
     wrapdemo - sample script for wrapping / importing test functions
 
-modules:
-    profmod - Profiler Module - a field testing engine
 """

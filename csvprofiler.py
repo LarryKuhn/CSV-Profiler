@@ -27,10 +27,10 @@ output files:
     error log file (optional - .log)
 """
 
-__version__ = '1.1.3'
+__version__ = '1.2.0'
 
 ########################################################################
-# Copyright (c) 2020 Larry Kuhn <larrykuhn@outlook.com>
+# Copyright (c) 2021 Larry Kuhn <larrykuhn@outlook.com>
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
@@ -68,6 +68,10 @@ __version__ = '1.1.3'
 # v1.1.3 05/25/2020 L.Kuhn
 #   - remove encoding command line option, use config instead
 #   - use errors='replace' for encoding issues except for input params
+# v1.2.0 03/24/2021 L.Kuhn
+#   - added 2 new profiling options - unique and statistical
+#   - minor cosmetic changes (e.g. append col# to error csv headers)
+#   - when called, will return rc, when main, will sys.exit(rc)
 ########################################################################
 from configparser import ConfigParser
 from collections import Counter
@@ -154,6 +158,12 @@ class ErrorMgr():
             self._cw = csv.writer(self._cf, dialect='csvp')
             if self._hashdr:
                 self._headrow = g['hdrs'].copy()
+                # new in vers 1.2.1 - place numbers in col header
+                # if not already numbered or numbered by csvpcg
+                for i in range(len(self._headrow)):
+                    if self._headrow[i] != i+1 \
+                        and self._headrow != f'Column{i+1}':
+                        self._headrow[i] = str(self._headrow[i])+'_'+str(i+1)
                 self._headrow.insert(0, 'colnums_in_error')
                 self._cw.writerow(self._headrow)
 
@@ -280,7 +290,7 @@ class Column():
     """
 
     def __init__(self, colnum: int, hdr: str, tname: str, flen: int,
-                 mlen: int, profile: bool, berr: bool, sss: bool,
+                 mlen: int, profile: str, berr: bool, sss: bool,
                  errlim: int,  lenlim: int, blim: int, data: list):
         """
         process / convert param values and get test func from profmod
@@ -320,7 +330,12 @@ class Column():
         except Exception:
             raise ValueError(f'Column #{colnum} {hdr} has invalid max '
                              + f'length specification: {mlen}')
-        self._profile = torf(profile)
+        if profile == '' \
+            or profile in ['y', 'Y', 'p', 'P', 'u', 'U', 's', 'S']:
+            self._profile = profile
+        else:
+            raise ValueError(f'Column #{colnum} {hdr} has invalid '
+                             + f'profile specification: {profile}')
         self._berr = torf(berr)
         self._sss = torf(sss)
         self._data = data
@@ -371,10 +386,10 @@ class Column():
     def get_current_field_value(self):
         return self._currfield
 
-    def exec(self, field: str) -> bool:
+    def exec(self, field: str, recsread: int) -> bool:
         """ execute func on field, return True/False/None for blank """
         self._currfield = field
-        return self._tfunc.field_test(field)
+        return self._tfunc.field_test(field, recsread)
 
     def field_error(self, errbits: int) -> int:
         """
@@ -516,7 +531,7 @@ def param_reader():
             'Column Test',
             'Column Length',
             'Max Length',
-            'Profile (y/n)',
+            'Profile (y/n/p/u/s)',  # v1.2.0
             'Blank is Error (y/n)',
             'Strip Surrounding Spaces (y/n)',
             'Error Output Limit',
@@ -621,7 +636,7 @@ def run_tests():
 
             # run the tests
             for fnum, field in enumerate(row, start=1):
-                g['cobs'][fnum].exec(field)
+                g['cobs'][fnum].exec(field, g['recsread'])
 
             # get and clear error flag lists tuple
             # ([field], [blank], [length], [max length])
@@ -748,7 +763,7 @@ def main(config=None):
     rm.write(started)
     rm.write('')
     config_file = os.path.realpath(config)
-    rm.write(f'Configuration file processed: {config_file}')
+    rm.write(f'Config. File    = {config_file}')
 
     # give profmod the config in case it needs an external file
     pm.config = g['cfg']
@@ -820,19 +835,27 @@ def main(config=None):
     t2 = time.time()
     proctime = t2-t1
     rm.write(f"    Total Processing Time = {proctime:.2f} sec")
-    rm.write(" Processing Time / record = ",
+    rm.write(" Processing Time / Record =",
              f"{proctime/g['recsread']*1000:.4f} ms\n")
     ended = 'csvprofiler.py ended ' + str(pm.get_time())
     print(ended)
     rm.write(ended)
     rm.close()
+    
+    # v1.2.0
+    # exit with return code unless called (AWS Lambda can't handle it)
+    # when not run as __main__, use return instead
+    # if unique failure should be treated as an error,
+    # that user mod could be handled here
     rc = pm.stats[0]['Total Test Errors'] \
         + pm.stats[0]['Total Blank Errors'] \
         + pm.stats[0]['Total Length Errors']
-    rc = 0
     if rc > 1:
         rc = 1
-    sys.exit(rc)
+    if __name__ == '__main__':
+        sys.exit(rc)
+    else:
+        return rc
 
 
 if __name__ == '__main__':

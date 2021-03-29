@@ -4,11 +4,11 @@ An extensible CSV column profiling and validation utility written in Python 3.
 
 ## Purpose
 
-This open-source project was developed to provide a feature-rich column validation and profiling utility for CSV files without the need for writing any code.  It was also designed to allow quite a bit of extensibility for those understanding Python and regular expressions, and with the expectation that the main testing module be used in the future to validate other file types.  It should serve as a helpful tool for those working with extremely large files or who work with relatively large files of the same type on a routine basis where validation would be useful.
+This open-source project was developed to provide a feature-rich column validation and profiling utility for CSV files without the need for writing any code.  It was also designed to allow quite a bit of extensibility for those understanding Python and regular expressions, and with the expectation that the main testing module be used in the future to validate other file types.  It should serve as a helpful tool for those working with extremely large CSV files or who work with relatively large CSV files with the same format on a routine basis where validation would be useful.
 
-## Modules
+## Python Scripts
 
-* __<span>csvpcg.py</span>__ - the configuration generator script
+* __<span>csvpcg.py</span>__ - the CSV modeling and configuration generator script
 
 * __<span>csvprofiler\.py</span>__ - the CSV profiling and validation utility
 
@@ -21,6 +21,10 @@ This open-source project was developed to provide a feature-rich column validati
 1. Automatic generation of configuration and parameter template files with column test recommendations.
 
 2. Profile any column, producing a report of unique column values and occurrence counts.
+
+    * New: "unique" profile option reports duplicate values and the record sequence numbers where they were found.
+
+    * New: "statistical" profile option uses a pandas series to generate a statistical column profile (i.e. mean, median, etc.)
 
 3. Column test options:
 
@@ -61,7 +65,7 @@ csvp_options | ID | Prefix | Name | Gender | Link_ID | Dept | Territory | T_Stat
 Column Test | digit | Abbrev | Name | Alpha | regex_LID | lookup_Dept | xcheck_T | xcheck_T
 Column Length | 10 |  |  |  | 6 |  |  |
 Max Length |  | 10 | 50 | 10 |  | 10 | 2 | 2
-Profile (y/n) |  | y |  | y |  | y | y | y
+Profile (y/n/p/u/s) |  | y |  | y |  | y | y | y
 Blank is Error (y/n) | y |  | y |  |  | y |  |
 Strip Surrounding Spaces (y/n) |  | y | y | y  |  | y | y | y
 Error Output Limit |  | 50 | 50 |  | 50 |  | 50 | 50
@@ -84,9 +88,28 @@ Complete user documentation is available [here](https://github.com/LarryKuhn/CSV
 
 Software is available above and can be downloaded into your local Python scripts directory or installed using pip from PyPI.org (sudo pip3 install csvprofiler or sudo pip3 install --user csvprofiler).  If you are installing on linux, you may need to chmod the scripts to allow execution.
 
+## Requirements
+
+Version 1.2.0 now requires pandas to be installed (used in the new statistical profiling option).
+
+## Revision History
+
+### Version 1.2.0, March 24, 2021
+
+1. New "unique" profile option
+2. New "statistical" profile option
+3. 9 new latitude/longitude built-in tests
+4. other minor changes; full change list and details included in documentation
+
+Prior versions are available on PyPI.org.
+
+## Supplemental Scripts
+
+The ["AWS Lambda"](https://github.com/LarryKuhn/CSV-Profiler/tree/master/AWS%20Lambda) folder contains scripts and documentation on how to implement this software as an AWS Lambda function, using S3 or EFS as an input/output resource.
+
 ## Licensing
 
-Copyright (c) 2020 Larry Kuhn (larrykuhn at outlook.com)
+Copyright (c) 2021 Larry Kuhn (larrykuhn at outlook.com)
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by

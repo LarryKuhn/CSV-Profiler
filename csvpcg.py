@@ -20,10 +20,10 @@ output files:
     small test file (.csv)
 """
 
-__version__ = '1.1.3'
+__version__ = '1.2.0'
 
 ########################################################################
-# Copyright (c) 2020 Larry Kuhn <larrykuhn@outlook.com>
+# Copyright (c) 2021 Larry Kuhn <larrykuhn@outlook.com>
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
@@ -55,6 +55,8 @@ __version__ = '1.1.3'
 # v1.1.3 05/25/2020 L.Kuhn
 #   - add encoding to config as param
 #   - use errors='replace' for encoding issues if encoding specified
+# v1.2.0 03/24/2021 L.Kuhn
+#   - added 2 new profiling options - unique and statistical
 ########################################################################
 from datetime import datetime
 import os
@@ -379,7 +381,7 @@ def output_params():
         writer.writerow(g['rectestlist'])
         writer.writerow(g['fldlenavg'])
         writer.writerow(['Max Length'] + emptyrow)
-        writer.writerow(['Profile (y/n)'] + emptyrow)
+        writer.writerow(['Profile (y/n/p/u/s)'] + emptyrow)  # v.1.2.0
         writer.writerow(['Blank is Error (y/n)'] + emptyrow)
         writer.writerow(['Strip Surrounding Spaces (y/n)']
                         + ['y' for i in range(len(g['fieldlist'])-1)])

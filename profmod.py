@@ -23,6 +23,7 @@ Functions (* currently used externally by package scripts):
     get_stats - for debugging
     get_flags - resets flags, returns error flags
     get_all_flags* - calls get_flags for all error dicts
+    show_dict_info* - for verbose / debugging
     show_formatted_dict* - for verbose / debugging
     show_all_dicts* - for verbose / debugging
     show_globals - available for debugging
@@ -56,10 +57,10 @@ input files:
     xcheck files (optional - .txt or .csv)
 """
 
-__version__ = '1.1.3'
+__version__ = '1.2.0'
 
 ########################################################################
-# Copyright (c) 2020 Larry Kuhn <larrykuhn@outlook.com>
+# Copyright (c) 2021 Larry Kuhn <larrykuhn@outlook.com>
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
@@ -95,6 +96,10 @@ __version__ = '1.1.3'
 #   - Add encoding problem handling; new command line option
 # v1.1.3 05/25/2020 L.Kuhn
 #   - errors='replace' for encoding issues (except for external files)
+# v1.2.0 03/24/2021 L.Kuhn
+#   - added 2 new profiling options - unique and statistical
+#   - uses pandas for statistical profiling
+#   - added 9 lat/lon named tests
 ########################################################################
 
 from datetime import date, datetime
@@ -104,6 +109,7 @@ import sys
 import csv
 import re
 import importlib
+import pandas as pd     # v1.2.0
 
 # globals
 verbose = False
@@ -124,9 +130,25 @@ stats[0]['Total Max Length Errors'] = 0
 # fieldnum : FieldTest object
 ftclass_dict = {}
 
-# profiling/lookups
-# field# : Counter() -> field value : count
+# PROFILE OPTIONS
+# profile dict (includes lookup_ tests)
+#     field# : Counter() -> field value : count
+# v1.2.0
+# unique dict
+#     field# : {"field value" : recseq#}
+# unique dupes
+#     field# : {"field value" : [recseq#, ...]}
+# statistical dict
+#     field# : ["field value", ...]
+# statistical discards
+#     field# : {"NaN" : recseq#}
+#     field# : {"Inf" : recseq#}
+#     field# : {"field value" : recseq#}
 profile_dict = {}
+unique_dict = {}
+unique_dupes = {}
+statistical_dict = {}
+statistical_discards = {}
 
 # field cross-check object dictionary
 # xcheck_objects_dict -> 'xcheck_name' : XcheckType object
@@ -592,7 +614,7 @@ class FieldTest:
             testname: named_test, range, lookup, regex, xcheck name
             length: length test value
             maxlength: max length test value
-            profile: run profile?
+            profile: run occurance, unique or statistical profile
             blankiserror: report blank as error?
             strip: strip surrounding spaces before test
             aux: optional list or string for lookup, regex, xcheck
@@ -618,12 +640,26 @@ class FieldTest:
             if maxlength > 0:
                 self._maxlength = maxlength
                 stats[fieldnum]['Max Length Errors'] = 0
-        if isinstance(profile, bool):
-            self._profile = profile
-            if self._profile is True:
-                profile_dict[fieldnum] = Counter()
+        if profile in ['y', 'Y', 'p', 'P']:
+            # occurance / original profile
+            self._profile = 'p'
+            profile_dict[fieldnum] = Counter()
+        # v1.2.0
+        elif profile in ['u', 'U']:
+            # unique profile
+            self._profile = 'u'
+            unique_dict[fieldnum] = {}
+            unique_dupes[fieldnum] = {}
+        # v1.2.0
+        elif profile in ['s', 'S']:
+            # statistical profile
+            self._profile = 's'
+            statistical_dict[fieldnum] = []
+            statistical_discards[fieldnum] = {}
+            statistical_discards[fieldnum]['NaN'] = []
+            statistical_discards[fieldnum]['Inf'] = []
         else:
-            self._profile = False
+            self._profile = None
         if isinstance(blankiserror, bool):
             self._blankiserror = blankiserror
             if blankiserror:
@@ -640,7 +676,7 @@ class FieldTest:
         if testname.startswith('lookup_'):
             self._testfunc = add_lookup_test(name=testname, lulist=aux)
             # establish not found counter dict with negated fieldnum
-            if self._profile is True:
+            if self._profile == 'p':
                 profile_dict[-fieldnum] = Counter()
         elif testname.startswith('xcheck_'):
             if len(testname) < 8:
@@ -680,7 +716,7 @@ class FieldTest:
     def __repr__(self):
         return f'<FieldTest {self._testname} for field {self._fieldnum}>'
 
-    def field_test(self, field):
+    def field_test(self, field, recsread=0):
         """
         run the field test based on type of test, validate lengths
 
@@ -708,11 +744,41 @@ class FieldTest:
         if self._strip is True:
             field = field.strip()
 
-        # profile?
-        if self._profile is True \
-                and not self._testname.startswith('lookup_'):
+        # profile options
+        if self._profile == "p" \
+            and not self._testname.startswith('lookup_'):
+            # occurance profile
             if field != '':
                 profile_dict[self._fieldnum][field] += 1
+        # v1.2.0
+        elif self._profile == "u":
+            # unique profile
+            if field != '':
+                if field in unique_dict[self._fieldnum]:
+                    # its a duplicate
+                    if field in unique_dupes[self._fieldnum]:
+                        unique_dupes[self._fieldnum][field].append(recsread)
+                    else:
+                        unique_dupes[self._fieldnum][field] = [recsread]
+                else:
+                    unique_dict[self._fieldnum][field] = recsread
+        # v1.2.0
+        elif self._profile == "s":
+            # statistical profile
+            try:
+                ff = float(field)
+            except Exception:
+                if field in statistical_discards[self._fieldnum]:
+                    statistical_discards[self._fieldnum][field].append(recsread)
+                else:
+                    statistical_discards[self._fieldnum][field] = [recsread]
+            else:
+                if 'NAN' == str(field).upper():
+                    statistical_discards[self._fieldnum]['NaN'].append(recsread)
+                elif 'INF' == str(field).upper():
+                    statistical_discards[self._fieldnum]['Inf'].append(recsread)
+                else:
+                    statistical_dict[self._fieldnum].append(ff)
 
         # xcheck test
         if self._testname.startswith('xcheck_'):
@@ -733,7 +799,7 @@ class FieldTest:
             if result is True:
                 stats[self._fieldnum]['Passed'] += 1
                 # add profile value for matched list items?
-                if self._profile is True:
+                if self._profile == 'p':
                     profile_dict[self._fieldnum][field] += 1
                 return True
             else:
@@ -741,7 +807,7 @@ class FieldTest:
                 stats[self._fieldnum]['Failed'] += 1
                 error_flag_dict[self._fieldnum] = True
                 # add profile value for unmatched list items (-fieldnum)?
-                if self._profile is True:
+                if self._profile == 'p':
                     profile_dict[-self._fieldnum][field] += 1
                 return False
         else:
@@ -757,7 +823,7 @@ class FieldTest:
             # field test
             result = self._testfunc(field)
             if result is True and length_flag_dict[self._fieldnum] is False \
-                    and maxlen_flag_dict[self._fieldnum] is False:
+                and maxlen_flag_dict[self._fieldnum] is False:
                 stats[self._fieldnum]['Passed'] += 1
                 return True
             if result is False:
@@ -785,7 +851,7 @@ class FieldTest:
         # stats
         for stat, total in stats[self._fieldnum].items():
             rm(f'{stat:>25} = {total:,}')
-        # profiles
+        # occurance profiles
         if self._fieldnum in profile_dict:
             rm(f'\n  *** Column Profile ***')
             for value, total in sorted(
@@ -794,7 +860,7 @@ class FieldTest:
                 rm(f'{value:>25} = {total:,}')
             dlen = len(profile_dict[self._fieldnum])
             rm(f'          (unique values) = {dlen:,}')
-        # negated profiles
+        # negated occurance profiles
         if -self._fieldnum in profile_dict:
             rm(f'\n *** Lookup Failures ***')
             for value, total in sorted(
@@ -803,8 +869,58 @@ class FieldTest:
                 rm(f'{value:>25} = {total:,}')
             dlen = len(profile_dict[-self._fieldnum])
             rm(f'          (unique values) = {dlen:,}')
+        # v1.2.0
+        # unique profiles
+        if self._fieldnum in unique_dict:
+            dupevalues = 0
+            dupes = 0
+            msgbuff = ''
+            rm(f'\n  *** Unique Profile Results ***')
+            for value, dupelist in unique_dupes[self._fieldnum].items():
+                recnums = [unique_dict[self._fieldnum][value], *dupelist]
+                msgbuff += f'{value:>25} : ' \
+                    + ', '.join(str(i) for i in recnums) \
+                    + '\n'
+                dupevalues += 1
+                dupes += len(dupelist)
+            if dupevalues > 0:
+                rm('  ***    Duplicates Found    ***')
+                rm('                    value : record sequence numbers')
+                rm(f'{msgbuff}')
+                totvalues = len(unique_dict[self._fieldnum]) + dupes
+                rm(f'     (total field values) = {totvalues}')
+                rm(f'      (duplicated values) = {dupevalues}')
+                rm(f'       (total duplicates) = {dupes}')
+            else:
+                rm('      No duplicates found')
+                rm(f'     (total field values) =', \
+                   f'{len(unique_dict[self._fieldnum])}')
+        # v1.2.0
+        # statistical profiles
+        if self._fieldnum in statistical_dict:
+            rm(f'\n  *** Statistical Profile ***')
+            print(f'Calculating statistics for field# {self._fieldnum}...')
+            sps = pd.Series(statistical_dict[self._fieldnum], dtype='float64', index=None)
+            spsd = sps.describe()
+            for k in spsd.describe().keys():
+                rm(f'{k:>25} = {spsd.get(k):15.10f}')
+            rm(f'                      var = {sps.var():15.10f}')
+            rm(f'                      mad = {sps.mad():15.10f}')
+            rm(f'                   median = {sps.median():15.10f}')
+            rm(f'                     skew = {sps.skew():15.10f}')
+            rm(f'                      sem = {sps.sem():15.10f}')
+            rm(f'                     kurt = {sps.kurt():15.10f}')
+            del sps, spsd
+            for k, v in statistical_discards[self._fieldnum].items():
+                _ = f'{len(statistical_discards[self._fieldnum][k])} ' \
+                    + f'"{k}" dropped @ rec#s'
+                rm(f'{_:>25} : {v}')
 
     def get_name(self):
+        return self._fieldname
+            
+
+def get_name(self):
         return self._fieldname
 
 
@@ -868,9 +984,40 @@ def show_formatted_dict(dictin, ind='') -> str:
                     xstring += show_formatted_dict(v, ind='  ')
             else:
                 xstring += f'{k:>25}: {v}\n'
-    # return f'{xstring}{ind}{"*" * 70}\n'
     return xstring
 
+
+def show_dict_info(dictin, ind='') -> str:
+    """ provide dictin dictionary content overview, indented with ind """
+    xstring = ''
+    if isinstance(dictin, list):
+        if len(dictin) > 100:
+            xstring += f'{ind}list length is {len(dictin)}\n'
+        else:
+            xstring += f'{ind}{ind}{dictin}\n'
+    else:
+        if len(dictin) > 100:
+            xstring += f'{ind}dict length is {len(dictin)}\n'
+        else:
+            for k, v in sorted(dictin.items(), key=lambda t: t[0]):
+                if isinstance(v, dict):
+                    xstring += '\n'
+                    if len(v) == 0:
+                        xstring += f'{ind}{k}: (empty)\n'
+                    else:
+                        xstring += f'{ind}{k}:\n'
+                        xstring += show_dict_info(v, ind='  ')
+                    xstring += '\n'
+                elif isinstance(v, list):
+                    xstring += '\n'
+                    if len(v) == 0:
+                        xstring += f'{ind}{k}: (empty)\n'
+                    else:
+                        xstring += f'{ind}{k}:\n'
+                        xstring += show_dict_info(v, ind='  ')
+                else:
+                    xstring += f'{k:>25}: {v}\n'
+    return xstring
 
 def show_all_dicts() -> str:
     """ returns formatted dictionaries for debugging """
@@ -894,12 +1041,21 @@ def show_all_dicts() -> str:
     mystring += show_formatted_dict(maxlen_flag_dict)
     mystring += '\n'
     mystring += '*profile_dict*\n'
-    mystring += show_formatted_dict(profile_dict)
+    mystring += show_dict_info(profile_dict)
+    mystring += '\n'
+    mystring += '*unique_dict*\n'               # v1.2.0
+    mystring += show_dict_info(unique_dict)
+    mystring += '\n'
+    mystring += '*unique_dupes*\n'              # v1.2.0
+    mystring += show_dict_info(unique_dupes)
+    mystring += '\n'
+    mystring += '*statistical_dict*\n'          # v1.2.0
+    mystring += show_dict_info(statistical_dict)
     mystring += '\n'
     mystring += '*xcheck_objects_dict*\n'
     mystring += show_formatted_dict(xcheck_objects_dict)
     mystring += '\n'
-    mystring += '*xcheck _test_dicts*\n'
+    mystring += '*xcheck_test_dict*\n'
     for k, v in xcheck_objects_dict.items():
         mystring += f'\n{k}:\n'
         mystring += show_formatted_dict(v._test_dict)
@@ -1256,6 +1412,210 @@ named_tests = {
                                                                         # bankcard, laser, solo, switch, hsbc, discover, rupay
                         |(?:(?:5[12345]|2[2-7])\d{2}(?:[- ]?\d{4}){3})  # mastercard, diners, bmo
                         )'''),
+    'lat'           :   regex_type_func(r'''(?x)
+                        (?:
+                        (   # Starts with sign, optional decimal seconds
+                            ([\+\-\u2212]|(N|S)\s)
+                            (
+                                (90\u00B0\s?00[\'\u2032](\s?00[\"\u2033])?)
+                            |
+                                (([1-8][0-9]|[0-9])\u00B0\s?[0-5][0-9][\'\u2032]\s?[0-5][0-9](\.[0-9]{1,4})?[\"\u2033])
+                            )
+                        |   # Ends with sign, optional decimal seconds
+                            (
+                                (90\u00B0\s?00[\'\u2032](\s?00[\"\u2033])?)
+                            |
+                                (([1-8][0-9]|[0-9])\u00B0\s?[0-5][0-9][\'\u2032]\s?[0-5][0-9](\.[0-9]{1,4})?[\"\u2033])
+                            )
+                            \s?(N|S)
+                        |   # Starts with sign, optional decimal minutes
+                            ([\+\-\u2212]|(N|S)\s)
+                            ([1-8][0-9]|[0-9])\u00B0\s?[0-5][0-9](\.[0-9]{1,6})?[\'\u2032]
+                        |   # Ends with sign, optional decimal minutes
+                            ([1-8][0-9]|[0-9])\u00B0\s?[0-5][0-9](\.[0-9]{1,6})?[\'\u2032]
+                            \s?(N|S)
+                        )
+                        )'''),
+    'lon'           :   regex_type_func(r'''(?x)
+                        (?:
+                        (   # Starts with sign, optional decimal seconds
+                            ([\+\-\u2212]|(E|W)\s)
+                            (
+                                (180\u00B0\s?00[\'\u2032](\s?00[\"\u2033])?)
+                            |
+                                ((1[0-7][0-9]|[1-9][0-9]|[0-9])\u00B0\s?[0-5][0-9][\'\u2032]\s?[0-5][0-9](\.[0-9]{1,4})?[\"\u2033])
+                            )
+                        |   # Ends with sign, optional decimal seconds
+                            (
+                                (180\u00B0\s?00[\'\u2032](\s?00[\"\u2033])?)
+                            |
+                                ((1[0-7][0-9]|[1-9][0-9]|[0-9])\u00B0\s?[0-5][0-9][\'\u2032]\s?[0-5][0-9](\.[0-9]{1,4})?[\"\u2033])
+                            )
+                            \s?(E|W)
+                        |   # Starts with sign, optional decimal minutes
+                            ([\+\-\u2212]|(E|W)\s)
+                            (1[0-7][0-9]|[1-9][0-9]|[0-9])\u00B0\s?[0-5][0-9](\.[0-9]{1,6})?[\'\u2032]
+                        |   # Ends with sign, optional decimal minutes
+                            (1[0-7][0-9]|[1-9][0-9]|[0-9])\u00B0\s?[0-5][0-9](\.[0-9]{1,6})?[\'\u2032]
+                            \s?(E|W)
+                        )
+                        )'''),
+    'latlon'        :   regex_type_func(r'''(?x)
+                        (?:
+                        (   # Starts with sign, optional decimal seconds
+                            ([\+\-\u2212]|(N|S)\s)
+                            (
+                                (90\u00B0\s?00[\'\u2032]\s?00[\"\u2033])
+                            |
+                                (([1-8][0-9]|[0-9])\u00B0\s?[0-5][0-9][\'\u2032]\s?[0-5][0-9](\.[0-9]{1,4})?[\"\u2033])
+                            )
+                            (\s|(\,|;)\s?)
+                            ([\+\-\u2212]|(E|W)\s)
+                            (
+                                (180\u00B0\s?00[\'\u2032](\s?00[\"\u2033])?)
+                            |
+                                ((1[0-7][0-9]|[1-9][0-9]|[0-9])\u00B0\s?[0-5][0-9][\'\u2032]\s?[0-5][0-9](\.[0-9]{1,4})?[\"\u2033])
+                            )
+                        |   # Ends with sign, optional decimal seconds
+                            (
+                                (90\u00B0\s?00[\'\u2032]\s?00[\"\u2033])
+                            |
+                                (([1-8][0-9]|[0-9])\u00B0\s?[0-5][0-9][\'\u2032]\s?[0-5][0-9](\.[0-9]{1,4})?[\"\u2033])
+                            )
+                            \s?(N|S)
+                            (\s|(\,|;)\s?)
+                            (
+                                (180\u00B0\s?00[\'\u2032](\s?00[\"\u2033])?)
+                            |
+                                ((1[0-7][0-9]|[1-9][0-9]|[0-9])\u00B0\s?[0-5][0-9][\'\u2032]\s?[0-5][0-9](\.[0-9]{1,4})?[\"\u2033])
+                            )
+                            \s?(E|W)
+                        |   # Starts with sign, optional decimal minutes
+                            ([\+\-\u2212]|(N|S)\s)
+                            (
+                                (90\u00B0\s?00[\'\u2032])
+                            |
+                                ([1-8][0-9]|[0-9])\u00B0\s?[0-5][0-9](\.[0-9]{1,6})?[\'\u2032]
+                            )
+                            (\s|(\,|;)\s?)
+                            ([\+\-\u2212]|(E|W)\s)
+                            (
+                                (180\u00B0\s?00[\'\u2032])
+                            |
+                                (1[0-7][0-9]|[1-9][0-9]|[0-9])\u00B0\s?[0-5][0-9](\.[0-9]{1,6})?[\'\u2032]
+                            )
+                        |   # Ends with sign, optional decimal minutes
+                            (
+                                (90\u00B0\s?00[\'\u2032])
+                            |
+                                ([1-8][0-9]|[0-9])\u00B0\s?[0-5][0-9](\.[0-9]{1,6})?[\'\u2032]
+                            )
+                            \s?(N|S)
+                            (\s|(\,|;)\s?)
+                            (
+                                (180\u00B0\s?00[\'\u2032])
+                            |
+                                (1[0-7][0-9]|[1-9][0-9]|[0-9])\u00B0\s?[0-5][0-9](\.[0-9]{1,6})?[\'\u2032]
+                            )
+                            \s?(E|W)
+                        )
+                        )'''),
+    'latdec'        :   regex_type_func(r'''(?x)
+                        (?:
+                        (
+                            ([\+\-\u2212]|(N|S)\s)?                         # starts with sign
+                            (90(\.0{1,8})?|[0-8]?[0-9](\.[0-9]{1,8})?)
+                            \u00B0?
+                        |
+                            (90(\.0{1,8})?|[0-8]?[0-9](\.[0-9]{1,8})?)
+                            \u00B0?\s?(N|S)                                 # ends with sign
+                        )
+                        )'''),
+    'londec'        :   regex_type_func(r'''(?x)
+                        (?:
+                        (
+                            ([\+\-\u2212]|(E|W)\s)?                         # starts with sign
+                            (180(\.0{1,8})?|(1[0-7][0-9]|[1-9][0-9]|[0-9])(\.[0-9]{1,8})?)
+                            \u00B0?
+                        |
+                            (180(\.0{1,8})?|(1[0-7][0-9]|[1-9][0-9]|[0-9])(\.[0-9]{1,8})?)
+                            \u00B0?\s?(E|W)                                 # ends with sign
+                        )
+                        )'''),
+    'latlondec'     :   regex_type_func(r'''(?x)
+                        (?:
+                        (
+                            ([\+\-\u2212]|(N|S)\s)?                         # starts with sign
+                            (90(\.0{1,8})?|[0-8]?[0-9](\.[0-9]{1,8})?)
+                            \u00B0?
+                            [,;]?\s
+                            ([\+\-\u2212]|(E|W)\s)?                         # starts with sign
+                            (180(\.0{1,8})?|(1[0-7][0-9]|[1-9][0-9]|[0-9])(\.[0-9]{1,8})?)
+                            \u00B0?
+                        )
+                        |
+                        (
+                            (90(\.0{1,8})?|[0-8]?[0-9](\.[0-9]{1,8})?)
+                            \u00B0?\s?(N|S)                                 # ends with sign
+                            [,;]?\s
+                            (180(\.0{1,8})?|(1[0-7][0-9]|[1-9][0-9]|[0-9])(\.[0-9]{1,8})?)
+                            \u00B0?\s?(E|W)                                 # ends with sign
+                        )
+                        )'''),
+    'lat6709'       :   regex_type_func(r'''(?x)
+                        (?:
+                        [\+\-\u2212]                                        # +/-/−
+                        (90
+                            (
+                                (\.0{1,8})?                                 # DD.D
+                                |(00(\.[0]{1,6})?)                          # DDMM.M
+                                |(0000(\.[0]{1,4})?)                        # DDMMSS.S
+                            )
+                        |[0-8][0-9]
+                            (
+                                (\.[0-9]{1,8})?                             # DD.D
+                                |([0-5][0-9](\.[0-9]{1,6})?)                # DDMM.M
+                                |(([0-5][0-9]){2}(\.[0-9]{1,4})?)           # DDMMSS.S
+                            )
+                        )
+                        )'''),
+    'lon6709'       :   regex_type_func(r'''(?x)
+                        (?:
+                        [\+\-\u2212]                                        # +/-/−
+                        (  
+                            (180
+                                (
+                                    (\.0{1,8})?                             # DDD.D
+                                    |(00(\.[0]{1,6})?)                      # DDDMM.M
+                                    |(0000(\.[0]{1,4})?)                    # DDDMMSS.S
+                                )
+                            |(1[0-7][0-9]|0[0-9]{2})
+                                (
+                                    (\.[0-9]{1,8})?                         # DDD.D
+                                    |([0-5][0-9](\.[0-9]{1,6})?)            # DDDMM.M
+                                    |(([0-5][0-9]){2}(\.[0-9]{1,4})?)       # DDDMMSS.S
+                                )
+                            )
+                        )
+                        )'''),
+    'latlon6709'    :   regex_type_func(r'''(?x)
+                        (?:
+                        [\+\-\u2212]                                                                    # +/-/−
+                        (
+                        (90(\.0{1,8})?|[0-8][0-9](\.[0-9]{1,8})?)                                       # DD.D
+                        [\+\-\u2212]                                                                    # +/-/−
+                        (180(\.0{1,8})?|(1[0-7][0-9]|0[0-9]{2})(\.[0-9]{1,8})?)                         # DDD.D
+                        |
+                        (9000(\.0{1,6})?|[0-8][0-9][0-5][0-9](\.[0-9]{1,6})?)                           # DDMM.M
+                        [\+\-\u2212]                                                                    # +/-/−
+                        (18000(\.0{1,6})?|(1[0-7][0-9]|0[0-9]{2})[0-5][0-9](\.[0-9]{1,6})?)             # DDDMM.M
+                        |
+                        (900000(\.0{1,4})?|[0-8][0-9]([0-5][0-9]){2}(\.[0-9]{1,4})?)                    # DDMMSS.S
+                        ([\+\-\u2212])                                                                  # +/-/−
+                        (1800000(\.0{1,4})?|(1[0-7][0-9]|0[0-9]{2})([0-5][0-9]){2}(\.[0-9]{1,4})?)      # DDDMMSS.S
+                        )
+                        # ([\+\-\u2212][0-9a-zA-Z]+)?                                                   # elevation (not implemented)
+                        )'''),
     'Sentence'      :   regex_type_func(r'(?a)[\x20-\x2a\x2c-\x3b\x3f-\x5a\x61-\x7a]+'),
     'b.isdigit'     :   bytes.isdigit,
     'isdigit'       :   str.isdigit,
@@ -1272,8 +1632,8 @@ named_tests = {
     'b.isalnum'     :   bytes.isalnum,
     'isalnum'       :   str.isalnum,
     'ASCII'         :   regex_type_func(r'(?a)[\x20-\x7e]+'),
-    'Latin1'        :   regex_type_func(r'(?a)[\x20-\x7e\xa0-\xff]+'),
-    'Windows'       :   regex_type_func(r'(?a)[\x20-\x7e\xa0-\xff\u0152\u0153\u0160\u0161\u0178\u017D\u017E\u0192\u02C6\u02DC\u2013\u2014\u2018-\u201A\u201C-\u201E\u2020-\u2022\u2026\u2030\u2039\u203A\u20AC\u2122]+'),
+    'Latin1'        :   regex_type_func(r'[\x20-\x7e\xa0-\xff]+'),
+    'Windows'       :   regex_type_func(r'[\x20-\x7e\xa0-\xff\u0152\u0153\u0160\u0161\u0178\u017D\u017E\u0192\u02C6\u02DC\u2013\u2014\u2018-\u201A\u201C-\u201E\u2020-\u2022\u2026\u2030\u2039\u203A\u20AC\u2122]+'),
     'isprintable'   :   str.isprintable,
 }
 #   'regexsample'   :   regex_type_func(r' regex goes here '),
@@ -1281,7 +1641,7 @@ named_tests = {
 
 # add isascii tests for recent Python versions
 if sys.version_info[0] > 3 \
-        or sys.version_info[0] == 3 and sys.version_info[1] >= 7:
+    or sys.version_info[0] == 3 and sys.version_info[1] >= 7:
     named_tests['b.isascii'] = bytes.isascii
     named_tests['isascii'] = str.isascii
 
@@ -1299,7 +1659,7 @@ def main():
     myl2 = ['a', 'b', 'range(20:100)', 'decimal', 'isupper', 'dollar', 'c']
     myl3 = ['v', 'w', 'range(1.0:50.0)', 'ssn', 'lookup_states', 'time', 'x']
     # some sample column data to test
-    a1 = 'À'
+    a1 = '\u02C6'
     b2 = ' PA '
     c3 = ' #bigtime, #genesis, #Gabriel, #Peter '
     d4 = 'A'
