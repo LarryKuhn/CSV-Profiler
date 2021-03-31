@@ -57,7 +57,7 @@ input files:
     xcheck files (optional - .txt or .csv)
 """
 
-__version__ = '1.2.0'
+__version__ = '1.2.0-1'
 
 ########################################################################
 # Copyright (c) 2021 Larry Kuhn <larrykuhn@outlook.com>
@@ -100,6 +100,8 @@ __version__ = '1.2.0'
 #   - added 2 new profiling options - unique and statistical
 #   - uses pandas for statistical profiling
 #   - added 9 lat/lon named tests
+# v1.2.0-1 03/30/2021 L.Kuhn
+#   - remove windows CRLF - saved as Unix LF
 ########################################################################
 
 from datetime import date, datetime
